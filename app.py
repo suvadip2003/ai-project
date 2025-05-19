@@ -1,125 +1,79 @@
-# Importing the necessary dependencies
 import streamlit as st
-import pandas as pd
-import pickle
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+import google.generativeai as genai 
+import os 
+from dotenv import load_dotenv
+load_dotenv()
+from PIL import Image
 
-# Declaring the teams
-teams = ['Sunrisers Hyderabad',
-         'Mumbai Indians',
-         'Royal Challengers Bangalore',
-         'Kolkata Knight Riders',
-         'Kings XI Punjab',
-         'Chennai Super Kings',
-         'Rajasthan Royals',
-         'Delhi Capitals']
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Declaring the venues where the matches are going to take place
-cities = ['Hyderabad', 'Bangalore', 'Mumbai', 'Indore', 'Kolkata', 'Delhi',
-          'Chandigarh', 'Jaipur', 'Chennai', 'Cape Town', 'Port Elizabeth',
-          'Durban', 'Centurion', 'East London', 'Johannesburg', 'Kimberley',
-          'Bloemfontein', 'Ahmedabad', 'Cuttack', 'Nagpur', 'Dharamsala',
-          'Visakhapatnam', 'Pune', 'Raipur', 'Ranchi', 'Abu Dhabi',
-          'Mohali', 'Bengaluru']
+def get_gemini_response(input_prompt, image):
+    model = genai.GenerativeModel('gemini-pro-vision')
+    response = model.generate_content([input_prompt, image[0]])
+    return response.text
 
-# Loading our machine learning model from a saved pickle file
-pipe = pickle.load(open('pipe.pkl', 'rb'))  # remember all folders including pipe.pkl, notebook, datasets exist in the same directory
+def input_image_setup(uploaded_file):
 
-# Setting up the app's title
-st.title('IPL Win Predictor')
+    '''
+    This function checks if the uploaded_file parameter is not None, which means that a file has been uploaded by the user. 
+    If a file has been uploaded, the code proceeds to read the file content into bytes using the getvalue() method of the uploaded_file object. 
+    This method returns the raw bytes of the uploaded file.
+    
+    The bytes data obtained from the uploaded file is stored in a dictionary format under the key-value pair "mime_type" and "data". The "mime_type" key stores the MIME type of the uploaded file, 
+    which indicates the type of content (e.g., image/jpeg, image/png). The "data" key stores the raw bytes of the uploaded file.
+    The image data is then stored in a list named image_parts, which contains a dictionary with the MIME type and data of the uploaded file.
+    
+    '''
+    #check if file has been uploaded
+    if uploaded_file is not None:
+        #Read the file into bytes
 
-# Setting up the layout with two columns
-col1, col2 = st.columns(2)
+        bytes_data = uploaded_file.getvalue()
 
-# Creating a dropdown selector for the batting team
-with col1:
-    battingteam = st.selectbox('Select the batting team', sorted(teams))
+        image_parts = [
+            {
+                "mime_type":uploaded_file.type, #get the mime type of the uploaded file
+                "data":bytes_data
+            }
+        ]
 
-# Creating a dropdown selector for the bowling team
-with col2:
-    bowlingteam = st.selectbox('Select the bowling team', sorted(teams))
-
-# Creating a dropdown selector for the city where the match is being played
-city = st.selectbox('Select the city where the match is being played', sorted(cities))
-
-# Creating a numeric input for the target score using number_input method in streamlit
-target = int(st.number_input('Target', step=1))
-
-# Setting up the layout with three columns
-col3, col4, col5 = st.columns(3)
-
-# Creating a numeric input for the current score
-with col3:
-    score = int(st.number_input('Score', step=1))
-
-# Creating a numeric input for the number of overs completed
-with col4:
-    overs = int(st.number_input('Overs Completed', step=1))
-
-# Creating a numeric input for the number of wickets fallen
-with col5:
-    wickets = int(st.number_input('Wickets Fallen', step=1))
-
-# Checking for different match results based on the input provided
-if score > target:
-    st.write(battingteam, "won the match")
-elif score == target - 1 and overs == 20:
-    st.write("Match Drawn")
-elif wickets == 10 and score < target - 1:
-    st.write(bowlingteam, 'Won the match')
-elif wickets == 10 and score == target - 1:
-    st.write('Match tied')
-elif battingteam == bowlingteam:
-    st.write('To proceed, please select different teams because no match can be played between the same teams')
-else:
-    # Checking if the input values are valid or not
-    if (target >= 0) & (target <= 300) & (overs >= 0) & (overs <= 20) & (wickets <= 10) & (wickets >= 0) & (score >= 0):
-        try:
-            if st.button('Predict Probability'):
-                # Calculating the number of runs left for the batting team to win
-                runs_left = target - score
-
-                # Calculating the number of balls left
-                balls_left = 120 - (overs * 6)
-
-                # Calculating the number of wickets left for the batting team
-                wickets_left = 10 - wickets
-
-                # Calculating the current Run-Rate of the batting team
-                currentrunrate = score / overs if overs != 0 else 0
-
-                # Calculating the Required Run-Rate for the batting team to win
-                requiredrunrate = (runs_left * 6) / balls_left if balls_left != 0 else 0
-
-                # Creating a pandas DataFrame containing the user inputs
-                input_df = pd.DataFrame({
-                    'batting_team': [battingteam],
-                    'bowling_team': [bowlingteam],
-                    'city': [city],
-                    'runs_left': [runs_left],
-                    'balls_left': [balls_left],
-                    'wickets_left': [wickets_left],
-                    'total_runs_x': [target],
-                    'cur_run_rate': [currentrunrate],
-                    'req_run_rate': [requiredrunrate]
-                })
-
-                # Loading the trained machine learning pipeline to make the prediction
-                result = pipe.predict_proba(input_df)
-
-                # Extracting the likelihood of loss and win
-                lossprob = result[0][0]
-                winprob = result[0][1]
-
-                # Displaying the predicted likelihood of winning and losing in percentage
-                st.header(battingteam + "- " + str(round(winprob * 100)) + "%")
-                st.header(bowlingteam + "- " + str(round(lossprob * 100)) + "%")
-
-        # Catching ZeroDivisionError
-        except ZeroDivisionError:
-            st.error("Please fill all the details")
-
-    # Displaying an error message if the input is incorrect
+        return image_parts
     else:
-        st.error('There is something wrong with the input, please fill the correct details')
+        raise FileNotFoundError("No file uploaded")
+    
+## initialising the streamlit app
+    
+st.set_page_config(page_title="Calories Advisor App")
+
+st.header("Calories Advisor App")
+uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+
+image = ""
+
+if uploaded_file is not None:
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
+
+submit = st.button("Tell me about the total calories")
+
+input_prompt = """
+You are an expert nutritionist where you need to see the food items from the image and calculate 
+the total calories, also provide the details of every food items with calories intake in the
+below format
+        1. Item 1 - no of calories
+        2. Item 2 - no of calories
+        ----
+        ----
+Finally you can slo mention whether the food is healthy or not and also mention the
+percentage split ration of carbohydrates, fats, fibers, sugar, protein and other important
+things required in our diet. If the If you find that food is not healthy then you must provide
+some alternative healthy food items that user can have in diet.
+
+"""
+
+
+if submit:
+    image_data = input_image_setup(uploaded_file)
+    response = get_gemini_response(input_prompt, image_data)
+    st.header("The Response is: ")
+    st.write(response)
